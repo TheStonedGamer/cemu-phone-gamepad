@@ -15,6 +15,7 @@ namespace CemuPhoneGamePad;
 internal sealed class GamePadCapture : IDisposable
 {
     private readonly CemuWindow window;
+    private readonly long quality;
     private readonly CaptureInterop.MtaLease mta = new();
     private IDirect3DDevice? device;
     private GraphicsCaptureItem? item;
@@ -24,9 +25,9 @@ internal sealed class GamePadCapture : IDisposable
     private volatile bool closed;
     public string? Notice { get; private set; } = "Waiting for Cemu's GamePad image";
 
-    public GamePadCapture(CemuWindow window)
+    public GamePadCapture(CemuWindow window, int quality = 70)
     {
-        this.window = window;
+        this.window = window; this.quality = Math.Clamp(quality, 40, 90);
         try
         {
             GamePadScreen.EnsureOpen(window);
@@ -114,7 +115,7 @@ internal sealed class GamePadCapture : IDisposable
             }
             using var output = new MemoryStream();
             using var parameters = new EncoderParameters(1);
-            parameters.Param[0] = new EncoderParameter(System.Drawing.Imaging.Encoder.Quality, 70L);
+            parameters.Param[0] = new EncoderParameter(System.Drawing.Imaging.Encoder.Quality, quality);
             resized.Save(output, ImageCodecInfo.GetImageEncoders().First(c => c.FormatID == ImageFormat.Jpeg.Guid), parameters);
             Notice = null;
             return output.ToArray();

@@ -35,7 +35,7 @@ internal static class GamePadScreen
                 var title = new StringBuilder(512); GetWindowText(window, title, 512);
                 if (title.Length != 0) result.Add(new(window, pid, title.ToString()));
             }
-            catch (ArgumentException) { }
+            catch (Exception e) when (e is ArgumentException or InvalidOperationException or System.ComponentModel.Win32Exception) { }
             return true;
         }, IntPtr.Zero);
         return result.OrderByDescending(w => w.Title.Contains("GamePad", StringComparison.OrdinalIgnoreCase)).ToArray();

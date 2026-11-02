@@ -15,15 +15,17 @@ internal sealed class PhoneServer : IDisposable
     private readonly PadSource source;
     private readonly CemuWindow window;
     private readonly bool audio;
+    private readonly int framesPerSecond, quality;
     private readonly PairingStore pairings;
-    private sealed record PairRequest(string DeviceId, string Name, string? Code, string? Token);
-    private sealed record AuthenticatedPhone(string? DeviceId, string? TokenHash);
+    private sealed record PairRequest(string DeviceId, string Name, string? Code, string? Token, int AudioPort = 0);
+    private sealed record AuthenticatedPhone(string? DeviceId, string? TokenHash, int AudioPort = 0);
     private readonly Task worker;
     public string Code { get; } = RandomNumberGenerator.GetInt32(10000000, 100000000).ToString();
     public event Action<string>? Status;
-    public PhoneServer(PadSource source, CemuWindow window, bool audio, PairingStore pairings)
+    public PhoneServer(PadSource source, CemuWindow window, bool audio, PairingStore pairings, int framesPerSecond = 30, int quality = 70)
     {
         this.source = source; this.window = window; this.audio = audio; this.pairings = pairings;
+        this.framesPerSecond = framesPerSecond == 15 ? 15 : 30; this.quality = quality;
         listener.Start(4); worker = Task.Run(Run);
     }
     private async Task Run()
@@ -33,7 +35,7 @@ internal sealed class PhoneServer : IDisposable
             try
             {
                 using var phone = await listener.AcceptTcpClientAsync(stop.Token);
-                phone.NoDelay = true;
+                phone.NoDelay = true; phone.SendBufferSize = 65536;
                 using var session = CancellationTokenSource.CreateLinkedTokenSource(stop.Token);
                 var stream = phone.GetStream();
                 AuthenticatedPhone? trusted;
@@ -52,11 +54,35 @@ internal sealed class PhoneServer : IDisposable
                     frames.Writer.TryWrite((3, Encoding.UTF8.GetBytes(message)));
                 }
                 DesktopAudio? sound = null;
+                UdpClient? audioSocket = null;
                 try
                 {
                     if (audio)
                     {
-                        try { sound = new DesktopAudio(data => frames.Writer.TryWrite((2, data)), Message); }
+                        try
+                        {
+                            if (trusted.AudioPort != 0 && phone.Client.RemoteEndPoint is IPEndPoint remote)
+                            {
+                                audioSocket = new UdpClient(AddressFamily.InterNetwork);
+                                audioSocket.Client.SendBufferSize = 8192;
+                                audioSocket.Connect(remote.Address, trusted.AudioPort);
+                                byte[] audioId = RandomNumberGenerator.GetBytes(16);
+                                await SendFrame(stream, 6, JsonSerializer.SerializeToUtf8Bytes(new { transport = "udp", session = Convert.ToHexString(audioId), sampleRate = 48000, channels = 2 }), session.Token);
+                                uint sequence = 0;
+                                var sender = audioSocket;
+                                sound = new DesktopAudio(data =>
+                                {
+                                    // Five milliseconds of stereo PCM fits below a LAN MTU.
+                                    var packet = new byte[32 + data.Length]; "PGPA"u8.CopyTo(packet);
+                                    audioId.CopyTo(packet, 4);
+                                    BinaryPrimitives.WriteUInt32BigEndian(packet.AsSpan(20), sequence++);
+                                    BinaryPrimitives.WriteInt64BigEndian(packet.AsSpan(24), Environment.TickCount64);
+                                    data.CopyTo(packet, 32);
+                                    try { sender.Send(packet); } catch (SocketException) { }
+                                }, Message);
+                            }
+                            else sound = new DesktopAudio(data => frames.Writer.TryWrite((2, data)), Message);
+                        }
                         catch (Exception e) { Message("Audio unavailable: " + e.Message); }
                     }
                     Task input = ReadControls(stream, trusted, session.Token);
@@ -70,7 +96,7 @@ internal sealed class PhoneServer : IDisposable
                         try { await Task.WhenAll(input, video, output); } catch { }
                     }
                 }
-                finally { sound?.Dispose(); source.Release(); session.Cancel(); }
+                finally { sound?.Dispose(); audioSocket?.Dispose(); source.Release(); session.Cancel(); }
             }
             catch (OperationCanceledException) when (stop.IsCancellationRequested) { break; }
             catch (Exception e)
@@ -103,20 +129,21 @@ internal sealed class PhoneServer : IDisposable
             if (pairings.Authenticate(request.DeviceId, request.Token, out string hash))
             {
                 await SendFrame(stream, 4, JsonSerializer.SerializeToUtf8Bytes(new { saved = true }), token);
-                return new(request.DeviceId, hash);
+                return new(request.DeviceId, hash, ValidAudioPort(request.AudioPort));
             }
-            await SendFrame(stream, 5, Encoding.UTF8.GetBytes("Saved pairing was forgotten or changed. Open SETUP and enter this PC's current code."), token);
+            await SendFrame(stream, 5, Encoding.UTF8.GetBytes("Saved pairing was forgotten or changed. Open Menu → Connection and enter this PC's current code."), token);
             return null;
         }
         if (request.Code is not { Length: 8 } || !CryptographicOperations.FixedTimeEquals(Encoding.UTF8.GetBytes(request.Code), Encoding.ASCII.GetBytes(Code)))
         {
-            await SendFrame(stream, 5, Encoding.UTF8.GetBytes("Pairing code was not accepted. Open SETUP and enter the host's current code."), token);
+            await SendFrame(stream, 5, Encoding.UTF8.GetBytes("Pairing code was not accepted. Open Menu → Connection and enter the host's current code."), token);
             return null;
         }
         var credential = pairings.Pair(request.DeviceId, request.Name ?? "Android phone");
         await SendFrame(stream, 4, JsonSerializer.SerializeToUtf8Bytes(new { saved = true, token = credential.Token }), token);
-        return new(request.DeviceId, credential.Hash);
+        return new(request.DeviceId, credential.Hash, ValidAudioPort(request.AudioPort));
     }
+    private static int ValidAudioPort(int port) => port is >= 1024 and <= 65535 ? port : 0;
     private static async Task SendFrame(NetworkStream stream, byte type, byte[] payload, CancellationToken token)
     {
         var header = new byte[5]; header[0] = type;
@@ -138,15 +165,31 @@ internal sealed class PhoneServer : IDisposable
     }
     private async Task StreamVideo(ChannelWriter<(byte, byte[])> frames, Action<string> message, CancellationToken token)
     {
-        using var capture = new GamePadCapture(window);
-        using var timer = new PeriodicTimer(TimeSpan.FromMilliseconds(33));
+        GamePadCapture? capture = null;
+        using var timer = new PeriodicTimer(TimeSpan.FromMilliseconds(1000.0 / framesPerSecond));
         string? notice = null;
-        long nextHeartbeat = 0;
+        long nextHeartbeat = 0, retryAt = 0;
+        string current = "Waiting for GamePad video";
+        try
+        {
         while (await timer.WaitForNextTickAsync(token))
         {
-            byte[]? image = await capture.NextImage(token);
-            if (image != null) frames.TryWrite((1, image));
-            string current = capture.Notice ?? "Streaming GamePad View — other windows may cover it";
+            try
+            {
+                if (capture == null && Environment.TickCount64 >= retryAt) capture = new GamePadCapture(window, quality);
+                if (capture != null)
+                {
+                    byte[]? image = await capture.NextImage(token);
+                    if (image != null) frames.TryWrite((1, image));
+                    current = capture.Notice ?? "Streaming GamePad View";
+                }
+            }
+            catch (OperationCanceledException) when (token.IsCancellationRequested) { throw; }
+            catch (Exception e)
+            {
+                capture?.Dispose(); capture = null; retryAt = Environment.TickCount64 + 5000;
+                current = "Video paused: " + e.Message + " Controls remain connected. Stop and select a new window if Cemu was restarted.";
+            }
             if (current != notice) { notice = current; message(current); }
             if (Environment.TickCount64 >= nextHeartbeat)
             {
@@ -156,6 +199,8 @@ internal sealed class PhoneServer : IDisposable
                 nextHeartbeat = Environment.TickCount64 + 1000;
             }
         }
+        }
+        finally { capture?.Dispose(); }
     }
     private static async Task WriteFrames(NetworkStream stream, ChannelReader<(byte Type, byte[] Data)> frames, CancellationToken token)
     {

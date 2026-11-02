@@ -20,14 +20,14 @@ This is a separate app from Wii U Controller. It installs alongside it as
 ## Setup
 
 1. Install `Cemu-Phone-GamePad.apk` on the phone.
-2. Extract the full `Cemu-Phone-GamePad-Windows-x64.zip` on the PC and run
-   `Cemu-Phone-GamePad.exe`.
+2. Run `Cemu-Phone-GamePad-Windows-Setup.exe` on the PC, or extract the full
+   portable ZIP and run `Cemu-Phone-GamePad.exe`. The installer adds a Start menu
+   shortcut and uninstaller; desktop and sign-in shortcuts are optional.
 3. In Cemu, start a game and enable **Options → Separate GamePad View**.
 4. In the host, refresh the window list and select **GamePad View**. Click
-   **Start GamePad host**. The GamePad window can stay behind the main game
+   **Start host**. The GamePad window can stay behind the main game
    window or other apps; keep it open and not minimized.
-5. Allow the host on your private network in Windows Firewall. Open **SETUP**
-   in the phone app and enter the displayed PC IPv4 address and 8-digit code
+5. Allow the host on your private network in Windows Firewall. Open **Menu → Connection** in the phone app and enter the displayed PC IPv4 address and 8-digit code
    once. Pairing is saved automatically on both devices.
 6. In the host, click **Install Cemu button mappings…**. Select Cemu's active
    configuration folder (the folder containing `settings.xml`), or its
@@ -48,14 +48,67 @@ This is a separate app from Wii U Controller. It installs alongside it as
   at **127.0.0.1**, port **26760**, selecting **Controller 1**.
 - Controller 1 is available as soon as the Windows app opens, including before
   pairing or starting video. Disconnected phones produce neutral controls.
-- If port 26760 is busy, close the other DSU/motion server and click **Retry
-  Cemu input connection**. Restart Cemu if it cached an older connection.
+- If port 26760 is busy, close the other DSU/motion server and open Diagnostics and click **Retry Cemu input**. Restart Cemu if it cached an older connection.
 
 The host sends DSU data on PC loopback only. The phone connection uses
 **TCP 26762**. If DSU 26760 is busy, close another receiver or motion server.
 The code changes each time the host starts, but **only new pairings need it**.
 Saved phones reconnect with their device token after host/phone restarts and
 app updates. On the phone, leave the code blank when selecting a saved PC.
+
+## Everyday use
+
+### Android
+
+- **Menu** (or Android Back) opens Connection, controller/audio settings, help,
+  and disconnect/reconnect. Leaving the app releases controls.
+- **Audio on / Unmute** is a quick mute button. Settings include volume,
+  button haptics, motion, touchscreen contact marker, and stick deadzone.
+- **Screen** expands the GamePad image and hides the controller buttons; touch
+  still works. **Buttons** restores the complete controller layout.
+- The footer shows video fps, outgoing control packet rate and received data
+  rate. Audio reports the transport, queued phone playback time and dropped
+  packets. These readings do **not** measure total input or audio latency.
+
+### Windows
+
+- **Dashboard** keeps window selection, pairing and live input status together.
+  Cemu windows and PC addresses refresh automatically.
+- **Settings** remembers playback audio, 15/30 fps, JPEG quality, minimizing to
+  the notification area, and optional auto start when GamePad View is found.
+  Stream settings take effect when the host is next started.
+- Minimizing can keep the host running in the notification area. Double-click
+  its icon to reopen it. Closing the app exits and releases controller input.
+- **Diagnostics** includes recent activity, retrying the Cemu input connection,
+  and copying a report without pairing codes or saved credentials.
+- Settings are stored in `%LOCALAPPDATA%\CemuPhoneGamePad\settings.json`.
+  The installer and portable build share settings and saved pairings for the
+  same Windows user. Uninstalling keeps those preferences.
+
+## Audio delay
+
+Update **both apps to 0.2.0 or newer** to use the separate audio transport.
+The default **Low delay · UDP** sends small PCM packets independently of video,
+so a delayed JPEG cannot block audio behind it. Windows requests a 20 ms capture
+buffer and sends up to 5 ms per packet. Android requests low latency playback
+where available, limits its output buffer, and discards stale audio rather than
+replaying a growing backlog. Actual device buffer sizes can differ.
+
+In **Menu → Controller & audio settings**, choose:
+
+| Setting | Use |
+| --- | --- |
+| Fast · 20 ms | Smallest requested playback buffer; try on a strong LAN |
+| Balanced · 30 ms | Default compromise for Wi-Fi |
+| Stable · 60 ms | More room for jitter if Fast/Balanced crackle |
+| Compatibility · TCP | Use if your network blocks UDP audio; video traffic may delay sound |
+
+Use phone speakers or wired headphones when delay matters. Bluetooth and the
+PC's playback endpoint can add delay beyond the app buffers. UDP prefers fresh
+sound over recovering lost packets, so a weak network can cause gaps. There is
+no measured end-to-end latency claim for this release. The host uses an outgoing
+UDP socket to a port negotiated by the paired phone; no additional fixed Windows
+inbound audio port is required.
 
 ### Saved pairings
 
@@ -64,7 +117,7 @@ app updates. On the phone, leave the code blank when selecting a saved PC.
   use a new host with its current code, but those sessions are not remembered.
 - Android saves a random app identity and a separate credential for each PC
   address in private app preferences. The most recently used PC reconnects when
-  the app opens; other saved addresses appear as suggestions in SETUP.
+  the app opens; other saved addresses appear as suggestions in Connection.
 - Windows stores device names and token hashes under
   `%LOCALAPPDATA%\CemuPhoneGamePad\pairings.json`. Replacing or moving the host
   ZIP does not remove pairings. Use the same Windows user profile.
@@ -72,7 +125,7 @@ app updates. On the phone, leave the code blank when selecting a saved PC.
   disconnects an active session, and releases its controls. Pair again using
   the current code if you want to restore access. Up to 16 phones can be saved;
   only one GamePad session runs at a time.
-- **Forget this PC** in Android SETUP removes the local credential for the
+- **Forget this PC** in Android Connection removes the local credential for the
   entered address. Windows' corresponding entry remains until revoked there
   or replaced by a new pairing from the same app installation.
 - If the PC's address changes, enter the new address and pair once there.
@@ -95,10 +148,10 @@ app updates. On the phone, leave the code blank when selecting a saved PC.
   or move sticks. Wii U GamePad touch itself is one contact, as on the original.
 - Buttons/sticks/sensors send at about 60 Hz. Input older than 250 ms is replaced
   with neutral controls and released touch. Backgrounding, disconnecting, or
-  opening SETUP releases controls.
+  opening Connection releases controls.
 - Video uses JPEG frames at 854×480, targeting 30 fps. Decode and transport queues
   are bounded and discard older frames when the network cannot keep up.
-  This first version prioritizes compatibility over bandwidth efficiency.
+  JPEG encoding prioritizes compatibility over bandwidth efficiency.
 - Windows Graphics Capture reads the **selected Cemu window**, even when
   covered by other windows or without keyboard focus. Other desktop windows
   are not sampled. Window decorations and central 16:9 letterboxing are removed
@@ -107,14 +160,15 @@ app updates. On the phone, leave the code blank when selecting a saved PC.
   production for minimized windows. If minimized, the phone keeps the last image
   and shows a restore message; controls/audio and the paired session remain
   active. Restoring the window resumes new frames. Resizing recreates the capture
-  buffers. Closing the window ends the session; reopen and reselect it.
+  buffers. If capture fails or the window closes, controls/audio stay connected while
+  video retries. To capture a newly opened window, stop, refresh and reselect it.
 - Windows Graphics Capture must be available (Windows 10 2004+ with a supported
   GPU/driver). Windows may display its standard capture border. Capture does not
   inject code into Cemu, modify Cemu, or fall back to desktop screenshots.
   HDR-to-SDR tone mapping is not implemented; use SDR for predictable colors.
 - Audio is 48 kHz stereo PCM from the PC's default playback endpoint. It includes
   other apps using that endpoint. The host checkbox disables sharing; phone
-  SETUP also has mute. It does not isolate Cemu's GamePad-only audio.
+  settings and the quick button also have mute. It does not isolate Cemu's GamePad-only audio.
 - Acceleration and gyro rates are rotated into the phone's landscape display
   basis. Samples older than 200 ms are invalidated. Gyro is optional; orientation
   feel, axis signs and drift require live Cemu checks on real phones.
@@ -132,7 +186,7 @@ app updates. On the phone, leave the code blank when selecting a saved PC.
 The APK and Windows project compile. Initial installation/launch is checked on
 an Android Galaxy A14. A live game image has been observed on that phone. DSU
 discovery, packet CRCs, button forwarding and neutral release were checked with
-a protocol probe. Actual in-game input on Windows still needs confirmation. Covered-window capture,
+a protocol probe. Actual in-game input and the new audio path on Windows still need confirmation. Covered-window capture,
 resize/restore behavior, touch alignment, sensor orientation, audio and actual
 latency remain experimental until tested together. Building a package is not
 proof of in-game compatibility.
@@ -155,11 +209,13 @@ Windows requires the .NET 10 SDK:
 
 ```powershell
 ./host/build.ps1
+# Also build the installer (requires Inno Setup 6):
+./host/build.ps1 -Installer
 ```
 
 Outputs are under `dist/`. CI builds both platforms. Pushing a version tag that
-matches `VERSION`, such as `v0.1.3`, publishes the APK, portable Windows ZIP,
-and SHA256SUMS.txt after both builds pass.
+matches `VERSION`, such as `v0.2.0`, publishes the APK, portable Windows ZIP,
+Windows installer and SHA256SUMS.txt after both builds pass.
 
 See [wire protocol](docs/PROTOCOL.md). Licensed under MIT. Independent software;
 not affiliated with Nintendo, Cemu, or Android.

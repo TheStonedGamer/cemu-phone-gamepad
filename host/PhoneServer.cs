@@ -60,7 +60,7 @@ internal sealed class PhoneServer : IDisposable
                         catch (Exception e) { Message("Audio unavailable: " + e.Message); }
                     }
                     Task input = ReadControls(stream, session.Token);
-                    Task video = StreamVideo(frames.Writer, session.Token);
+                    Task video = StreamVideo(frames.Writer, Message, session.Token);
                     Task output = WriteFrames(stream, frames.Reader, session.Token);
                     Task finished = await Task.WhenAny(input, video, output);
                     session.Cancel(); phone.Close();
@@ -90,10 +90,26 @@ internal sealed class PhoneServer : IDisposable
             source.Update(PadState.Parse(bytes));
         }
     }
-    private async Task StreamVideo(ChannelWriter<(byte, byte[])> frames, CancellationToken token)
+    private async Task StreamVideo(ChannelWriter<(byte, byte[])> frames, Action<string> message, CancellationToken token)
     {
+        using var capture = new GamePadCapture(window);
         using var timer = new PeriodicTimer(TimeSpan.FromMilliseconds(33));
-        while (await timer.WaitForNextTickAsync(token)) frames.TryWrite((1, GamePadScreen.Capture(window)));
+        string? notice = null;
+        long nextHeartbeat = 0;
+        while (await timer.WaitForNextTickAsync(token))
+        {
+            byte[]? image = await capture.NextImage(token);
+            if (image != null) frames.TryWrite((1, image));
+            string current = capture.Notice ?? "Streaming GamePad View — other windows may cover it";
+            if (current != notice) { notice = current; message(current); }
+            if (Environment.TickCount64 >= nextHeartbeat)
+            {
+                // A static or minimized capture may produce no video frames.
+                // Keep the phone's transport alive without duplicating images.
+                frames.TryWrite((3, Encoding.UTF8.GetBytes(current)));
+                nextHeartbeat = Environment.TickCount64 + 1000;
+            }
+        }
     }
     private static async Task WriteFrames(NetworkStream stream, ChannelReader<(byte Type, byte[] Data)> frames, CancellationToken token)
     {

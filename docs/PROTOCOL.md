@@ -36,6 +36,9 @@ Each frame is one type byte, four-byte big-endian payload length, and payload.
 Length is bounded to 2 MB. Types: 1 JPEG video; 2 little-endian signed 16-bit
 48 kHz stereo PCM audio; 3 UTF-8 status. Video decode also bounds image size.
 Audio/video queue lengths are bounded; older data is discarded under load.
+The host sends a type-3 status heartbeat every second even when Windows capture
+has no new image, such as a static scene or minimized GamePad View. This keeps
+the paired link alive without repeatedly encoding the same frame.
 
 ## Cemu
 

@@ -1,20 +1,20 @@
-Initial experimental Android phone GamePad for Cemu on Windows.
+GamePad View can now stay behind the main Cemu window or other apps.
 
-- GamePad second-screen video, touch, buttons, dual sticks and phone motion.
-- Optional PC playback audio on the phone.
-- Paired local connection and neutral release after stale input.
-- Direct DSU input to Cemu; no virtual gamepad driver or paid driver license.
+- Replaced desktop screenshots with Windows Graphics Capture targeting the
+  selected Cemu window. Covering windows are not included in the phone image.
+- Client-area and 16:9 cropping keep borders and title bars off the touch screen.
+- Capture buffers follow window resizing.
+- Minimizing shows a restore message without disconnecting controls/audio;
+  keep the GamePad window open and not minimized for live video.
+- Status heartbeats keep static scenes and temporarily paused capture connected.
 
-Install the APK on Android and extract the entire Windows ZIP on the PC.
-Enable Cemu's Separate GamePad View, select it in the host, start the host,
-and pair the phone with the displayed address/code. In Cemu select Wii U
-GamePad with DSUController at 127.0.0.1:26760, enable motion, and map buttons.
-See README.md for setup and limitations.
+Requires Windows 10 version 2004+ or Windows 11 x64 and a supported graphics
+driver. No Cemu modification, injected DLL, or virtual controller driver.
 
-Keep GamePad View visible and unobscured: this version captures its visible
-desktop rectangle. Audio captures all playback on the default PC endpoint.
-No camera, microphone, NFC or rumble forwarding.
+Android app and phone protocol remain compatible with the previous host.
+Download and extract the entire Windows ZIP to update. The APK is included
+with synchronized version metadata.
 
-Android installation/launch and compilation are checked. A complete live
-Windows/Cemu session is still unverified; motion orientation, streaming,
-touch alignment and latency remain experimental.
+Compilation is checked; real Windows/Cemu capture, resize and restore behavior
+still need live validation. Other limitations remain: no camera, microphone,
+NFC or rumble forwarding, and desktop loopback audio includes other apps.

@@ -11,7 +11,7 @@ This is a separate app from Wii U Controller. It installs alongside it as
 
 ## Requirements
 
-- Windows 10/11 x64 PC running Cemu with its **Separate GamePad View** enabled.
+- Windows 10 version 2004+ or Windows 11 x64 PC running Cemu with its **Separate GamePad View** enabled.
 - Android 6.0+ phone; gyroscope required for full motion. Buttons and touch work
   without a gyro.
 - A shared trusted local network. Prefer 5 GHz Wi-Fi or Ethernet for the PC.
@@ -23,8 +23,9 @@ This is a separate app from Wii U Controller. It installs alongside it as
 2. Extract the full `Cemu-Phone-GamePad-Windows-x64.zip` on the PC and run
    `Cemu-Phone-GamePad.exe`.
 3. In Cemu, start a game and enable **Options → Separate GamePad View**.
-4. In the host, refresh the window list and select **GamePad View**. Keep it
-   visible, unminimized, and unobscured. Click **Start GamePad host**.
+4. In the host, refresh the window list and select **GamePad View**. Click
+   **Start GamePad host**. The GamePad window can stay behind the main game
+   window or other apps; keep it open and not minimized.
 5. Allow the host on your private network in Windows Firewall. Open **SETUP**
    in the phone app and enter the displayed PC IPv4 address and 8-digit code.
 6. In Cemu's **Options → Input settings**, choose **Wii U GamePad** as the
@@ -58,9 +59,19 @@ The pairing code changes each time the host starts. Re-enter it on the phone.
 - Video uses JPEG frames at 854×480, targeting 30 fps. Decode and transport queues
   are bounded and discard older frames when the network cannot keep up.
   This first version prioritizes compatibility over bandwidth efficiency.
-- Capture reads the selected window's **visible desktop area**, cropped to its
-  central 16:9 picture. Windows covering it will be visible on the phone.
-  Minimized or closed windows stop the session. This is not hidden-window capture.
+- Windows Graphics Capture reads the **selected Cemu window**, even when
+  covered by other windows or without keyboard focus. Other desktop windows
+  are not sampled. Window decorations and central 16:9 letterboxing are removed
+  before the image is sent, keeping touch coordinates aligned.
+- Keep GamePad View open and not minimized. Windows or Cemu may suspend frame
+  production for minimized windows. If minimized, the phone keeps the last image
+  and shows a restore message; controls/audio and the paired session remain
+  active. Restoring the window resumes new frames. Resizing recreates the capture
+  buffers. Closing the window ends the session; reopen and reselect it.
+- Windows Graphics Capture must be available (Windows 10 2004+ with a supported
+  GPU/driver). Windows may display its standard capture border. Capture does not
+  inject code into Cemu, modify Cemu, or fall back to desktop screenshots.
+  HDR-to-SDR tone mapping is not implemented; use SDR for predictable colors.
 - Audio is 48 kHz stereo PCM from the PC's default playback endpoint. It includes
   other apps using that endpoint. The host checkbox disables sharing; phone
   SETUP also has mute. It does not isolate Cemu's GamePad-only audio.
@@ -76,10 +87,11 @@ The pairing code changes each time the host starts. Re-enter it on the phone.
 ## Validation status
 
 The APK and Windows project compile. Initial installation/launch is checked on
-an Android Galaxy A14. A live Windows/Cemu game session has **not** been checked;
-screen capture, touch alignment, sensor orientation, audio and actual latency
-remain experimental until tested together. Building a package is not proof of
-in-game compatibility.
+an Android Galaxy A14. The Windows Graphics Capture backend builds, but a live
+Windows/Cemu game session has **not** been checked. Covered-window capture,
+resize/restore behavior, touch alignment, sensor orientation, audio and actual
+latency remain experimental until tested together. Building a package is not
+proof of in-game compatibility.
 
 ## Build
 
@@ -102,8 +114,14 @@ Windows requires the .NET 10 SDK:
 ```
 
 Outputs are under `dist/`. CI builds both platforms. Pushing a version tag that
-matches `VERSION`, such as `v0.1.0`, publishes the APK, portable Windows ZIP,
+matches `VERSION`, such as `v0.1.1`, publishes the APK, portable Windows ZIP,
 and SHA256SUMS.txt after both builds pass.
 
 See [wire protocol](docs/PROTOCOL.md). Licensed under MIT. Independent software;
 not affiliated with Nintendo, Cemu, or Android.
+
+## Capture implementation
+
+The host uses Windows' [HWND capture interop](https://learn.microsoft.com/en-us/windows/win32/api/windows.graphics.capture.interop/nf-windows-graphics-capture-interop-igraphicscaptureiteminterop-createforwindow)
+and a free-threaded [Windows Graphics Capture frame pool](https://learn.microsoft.com/en-us/windows/apps/develop/media-authoring-processing/screen-capture).
+This captures Cemu's composed window surface rather than the desktop rectangle.

@@ -1,6 +1,4 @@
 using System.Diagnostics;
-using System.Drawing.Drawing2D;
-using System.Drawing.Imaging;
 using System.Runtime.InteropServices;
 using System.Text;
 
@@ -42,34 +40,28 @@ internal static class GamePadScreen
         }, IntPtr.Zero);
         return result.OrderByDescending(w => w.Title.Contains("GamePad", StringComparison.OrdinalIgnoreCase)).ToArray();
     }
-    public static byte[] Capture(CemuWindow window)
+    public static bool IsMinimized(CemuWindow window) => IsIconic(window.Handle);
+    public static void EnsureOpen(CemuWindow window)
     {
         GetWindowThreadProcessId(window.Handle, out uint pid);
-        if (pid != window.ProcessId || !IsWindowVisible(window.Handle) || IsIconic(window.Handle)
-            || !GetClientRect(window.Handle, out var rect))
-            throw new InvalidOperationException("Cemu GamePad View was closed or minimized. Keep it visible.");
+        if (pid != window.ProcessId || !IsWindowVisible(window.Handle))
+            throw new InvalidOperationException("Cemu GamePad View was closed. Reopen it and select the new window.");
+    }
+    [DllImport("dwmapi.dll")] private static extern int DwmGetWindowAttribute(IntPtr window, uint attribute, out Rect rect, int size);
+    public static Rectangle ClientAreaInCapture(CemuWindow window, int captureWidth, int captureHeight)
+    {
+        EnsureOpen(window);
         var origin = new Point();
-        if (!ClientToScreen(window.Handle, ref origin)) throw new InvalidOperationException("Cannot locate GamePad View");
-        int width = rect.Right - rect.Left, height = rect.Bottom - rect.Top;
-        if (width < 160 || height < 90 || width > 8192 || height > 8192) throw new InvalidOperationException("Resize GamePad View to a usable size");
-        // Cemu letterboxes the 16:9 GamePad image. Crop those bars so touch
-        // coordinates on the phone refer to the displayed image, not the frame.
-        int cropWidth = Math.Min(width, (int)Math.Round(height * 16.0 / 9));
-        int cropHeight = Math.Min(height, (int)Math.Round(width * 9.0 / 16));
-        using var capture = new Bitmap(cropWidth, cropHeight, PixelFormat.Format24bppRgb);
-        using (var graphics = Graphics.FromImage(capture))
-            graphics.CopyFromScreen(origin.X + (width - cropWidth) / 2, origin.Y + (height - cropHeight) / 2,
-                0, 0, new Size(cropWidth, cropHeight), CopyPixelOperation.SourceCopy);
-        using var resized = new Bitmap(854, 480, PixelFormat.Format24bppRgb);
-        using (var graphics = Graphics.FromImage(resized))
-        {
-            graphics.InterpolationMode = InterpolationMode.Bilinear;
-            graphics.DrawImage(capture, 0, 0, 854, 480);
-        }
-        using var stream = new MemoryStream();
-        using var parameters = new EncoderParameters(1);
-        parameters.Param[0] = new EncoderParameter(System.Drawing.Imaging.Encoder.Quality, 70L);
-        resized.Save(stream, ImageCodecInfo.GetImageEncoders().First(c => c.FormatID == ImageFormat.Jpeg.Guid), parameters);
-        return stream.ToArray();
+        if (!GetClientRect(window.Handle, out var client) || !ClientToScreen(window.Handle, ref origin))
+            throw new InvalidOperationException("Cannot locate Cemu's GamePad image");
+        Marshal.ThrowExceptionForHR(DwmGetWindowAttribute(window.Handle, 9, out var bounds, Marshal.SizeOf<Rect>()));
+        if (bounds.Right <= bounds.Left || bounds.Bottom <= bounds.Top) return Rectangle.Empty;
+        float sx = captureWidth / (float)(bounds.Right - bounds.Left);
+        float sy = captureHeight / (float)(bounds.Bottom - bounds.Top);
+        int x = Math.Clamp((int)Math.Round((origin.X - bounds.Left) * sx), 0, captureWidth);
+        int y = Math.Clamp((int)Math.Round((origin.Y - bounds.Top) * sy), 0, captureHeight);
+        int right = Math.Clamp((int)Math.Round((origin.X - bounds.Left + client.Right - client.Left) * sx), x, captureWidth);
+        int bottom = Math.Clamp((int)Math.Round((origin.Y - bounds.Top + client.Bottom - client.Top) * sy), y, captureHeight);
+        return Rectangle.FromLTRB(x, y, right, bottom);
     }
 }

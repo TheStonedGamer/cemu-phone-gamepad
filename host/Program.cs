@@ -27,7 +27,7 @@ internal sealed class HostForm : Form
         Controls.Add(panel);
         void TextLine(string text) => panel.Controls.Add(new Label { Text = text, AutoSize = true, MaximumSize = new Size(690, 0), Margin = new Padding(0, 0, 0, 16) });
         TextLine("Your Android phone as Cemu's second screen and controller");
-        TextLine("1. Run Cemu and enable Options → Separate GamePad View.\n2. Select that window below. Keep it visible and unobscured.\n3. Start the host, then enter the PC address and pairing code in the Android app.");
+        TextLine("1. Run Cemu and enable Options → Separate GamePad View.\n2. Select that window below. It can stay behind other windows.\n3. Start the host, then enter the PC address and pairing code in the Android app.");
         panel.Controls.Add(windows); panel.Controls.Add(refresh); panel.Controls.Add(audio);
         panel.Controls.Add(toggle); panel.Controls.Add(pairing); panel.Controls.Add(status);
         var addresses = NetworkInterface.GetAllNetworkInterfaces().Where(n => n.OperationalStatus == OperationalStatus.Up)
@@ -35,7 +35,7 @@ internal sealed class HostForm : Form
                 && !System.Net.IPAddress.IsLoopback(a.Address)).Select(a => a.Address.ToString()).Distinct();
         TextLine("PC addresses: " + string.Join(" • ", addresses.DefaultIfEmpty("No active IPv4 address")) + "\nPhone TCP port: 26762");
         TextLine("Cemu input: Wii U GamePad → DSUController → 127.0.0.1:26760 → Controller 1. Enable motion in Settings and map buttons/sticks once. Touch is supplied directly by DSU.");
-        TextLine("Screen sharing captures the selected window's visible desktop area. Anything covering it will also appear on the phone. Allow TCP 26762 on your private network.");
+        TextLine("Capture follows the selected Cemu window, even when covered. Keep GamePad View open and not minimized. Allow TCP 26762 on your private network.");
         refresh.Click += (_, _) => RefreshWindows();
         toggle.Click += (_, _) => { if (phone == null) StartHost(); else StopHost(); };
         FormClosing += (_, _) => StopHost(); RefreshWindows();

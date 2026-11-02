@@ -7,6 +7,8 @@ import android.media.AudioFormat;
 import android.media.AudioTrack;
 import java.io.DataInputStream;
 import java.io.OutputStream;
+import java.io.DataOutputStream;
+import org.json.JSONObject;
 import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
@@ -15,7 +17,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
 final class PhoneConnection {
-  interface Listener { void frame(Bitmap bitmap); void status(String text); }
+  interface Listener { void frame(Bitmap bitmap); void status(String text); void paired(String host, String token); }
   private final Controls controls;
   private final Listener listener;
   private volatile boolean running;
@@ -28,9 +30,9 @@ final class PhoneConnection {
   private volatile boolean muted;
   PhoneConnection(Controls controls, Listener listener) { this.controls = controls; this.listener = listener; }
   void mute(boolean value) { muted = value; sound.clear(); }
-  synchronized void start(String host, String code) {
+  synchronized void start(String host, String code, String savedToken, String deviceId, String deviceName) {
     stop(); running = true; long ticket = ++generation;
-    worker = new Thread(() -> run(host, code, ticket), "gamepad-network"); worker.start();
+    worker = new Thread(() -> run(host, code, savedToken, deviceId, deviceName, ticket), "gamepad-network"); worker.start();
   }
   synchronized void stop() {
     running = false; generation++; controls.clear();
@@ -38,10 +40,11 @@ final class PhoneConnection {
     if (worker != null) { try { worker.join(3000); } catch (InterruptedException ignored) { Thread.currentThread().interrupt(); } }
     worker = null; socket = null; nextVideo.set(null); sound.clear();
   }
-  private void run(String host, String code, long ticket) {
+  private void run(String host, String code, String savedToken, String deviceId, String deviceName, long ticket) {
     decoder = new Thread(() -> decode(ticket), "gamepad-video"); decoder.start();
     audio = new Thread(() -> playAudio(ticket), "gamepad-audio"); audio.start();
     Thread sender = null;
+    String credential = savedToken;
     while (running && ticket == generation) {
       try (Socket peer = new Socket()) {
         socket = peer;
@@ -49,7 +52,12 @@ final class PhoneConnection {
         peer.connect(new InetSocketAddress(host, 26762), 4000);
         peer.setTcpNoDelay(true); peer.setSoTimeout(5000);
         OutputStream output = peer.getOutputStream();
-        output.write(("PGP1" + code).getBytes(StandardCharsets.US_ASCII)); output.flush();
+        JSONObject request = new JSONObject();
+        request.put("deviceId", deviceId).put("name", deviceName);
+        if (!credential.isEmpty()) request.put("token", credential); else request.put("code", code);
+        byte[] hello = request.toString().getBytes(StandardCharsets.UTF_8);
+        DataOutputStream handshake = new DataOutputStream(output);
+        handshake.writeBytes("PGP2"); handshake.writeInt(hello.length); handshake.write(hello); handshake.flush();
         sender = new Thread(() -> send(peer, output, ticket), "gamepad-input"); sender.start();
         DataInputStream input = new DataInputStream(peer.getInputStream());
         boolean announced = false;
@@ -58,6 +66,18 @@ final class PhoneConnection {
           int length = input.readInt();
           if (length < 0 || length > 2000000) throw new java.io.IOException("Invalid host frame");
           byte[] payload = new byte[length]; input.readFully(payload);
+          if (ticket != generation) break;
+          if (type == 5) {
+            listener.status(new String(payload, StandardCharsets.UTF_8)); running = false; break;
+          }
+          if (type == 4) {
+            String issued = new JSONObject(new String(payload, StandardCharsets.UTF_8)).optString("token", "");
+            if (!issued.isEmpty()) {
+              if (!issued.matches("[0-9A-Fa-f]{64}")) throw new java.io.IOException("Invalid saved pairing");
+              credential = issued; listener.paired(host, issued);
+            }
+            continue;
+          }
           if (!announced) { listener.status("Connected — GamePad screen, touch and motion"); announced = true; }
           if (type == 1) nextVideo.set(payload);
           else if (type == 2 && !muted && length % 4 == 0) { if (!sound.offer(payload)) { sound.poll(); sound.offer(payload); } }

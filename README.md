@@ -27,7 +27,8 @@ This is a separate app from Wii U Controller. It installs alongside it as
    **Start GamePad host**. The GamePad window can stay behind the main game
    window or other apps; keep it open and not minimized.
 5. Allow the host on your private network in Windows Firewall. Open **SETUP**
-   in the phone app and enter the displayed PC IPv4 address and 8-digit code.
+   in the phone app and enter the displayed PC IPv4 address and 8-digit code
+   once. Pairing is saved automatically on both devices.
 6. In Cemu's **Options → Input settings**, choose **Wii U GamePad** as the
    emulated controller. Add **DSUController**, server **127.0.0.1**, port
    **26760**, **Controller 1**. Keep the phone connected while configuring.
@@ -37,7 +38,31 @@ This is a separate app from Wii U Controller. It installs alongside it as
 
 The host sends DSU data on PC loopback only. The phone connection uses
 **TCP 26762**. If DSU 26760 is busy, close another receiver or motion server.
-The pairing code changes each time the host starts. Re-enter it on the phone.
+The code changes each time the host starts, but **only new pairings need it**.
+Saved phones reconnect with their device token after host/phone restarts and
+app updates. On the phone, leave the code blank when selecting a saved PC.
+
+### Saved pairings
+
+- Use version **0.1.2 or newer on both PC and phone** for remembered pairings.
+  Pair once after upgrading from an older phone build. Older phones can still
+  use a new host with its current code, but those sessions are not remembered.
+- Android saves a random app identity and a separate credential for each PC
+  address in private app preferences. The most recently used PC reconnects when
+  the app opens; other saved addresses appear as suggestions in SETUP.
+- Windows stores device names and token hashes under
+  `%LOCALAPPDATA%\CemuPhoneGamePad\pairings.json`. Replacing or moving the host
+  ZIP does not remove pairings. Use the same Windows user profile.
+- **Saved devices… → Forget selected phone** on Windows revokes that device,
+  disconnects an active session, and releases its controls. Pair again using
+  the current code if you want to restore access. Up to 16 phones can be saved;
+  only one GamePad session runs at a time.
+- **Forget this PC** in Android SETUP removes the local credential for the
+  entered address. Windows' corresponding entry remains until revoked there
+  or replaced by a new pairing from the same app installation.
+- If the PC's address changes, enter the new address and pair once there.
+  Uninstalling the phone app, clearing its data, or deleting Windows' saved
+  pairing file also requires pairing again. No hardware serial number is used.
 
 | Phone control | DSU label in Cemu |
 | --- | --- |
@@ -82,12 +107,15 @@ The pairing code changes each time the host starts. Re-enter it on the phone.
 - Camera, microphone, NFC, stylus pressure, rumble, and GamePad-specific power
   controls are not forwarded. This app covers the screen, touch, standard
   controls, motion and playback path rather than every GamePad accessory.
-- The LAN connection is paired but unencrypted. Use a trusted local network.
+- Pairing uses a one-time code exchange followed by a random per-device token.
+  The host stores SHA-256 token hashes; the phone stores the token itself.
+  Traffic, including the initial token exchange, is unencrypted. Use a trusted
+  local network.
 
 ## Validation status
 
 The APK and Windows project compile. Initial installation/launch is checked on
-an Android Galaxy A14. The Windows Graphics Capture backend builds, but a live
+an Android Galaxy A14. Remembered-pairing and capture changes compile, but a live
 Windows/Cemu game session has **not** been checked. Covered-window capture,
 resize/restore behavior, touch alignment, sensor orientation, audio and actual
 latency remain experimental until tested together. Building a package is not
@@ -114,7 +142,7 @@ Windows requires the .NET 10 SDK:
 ```
 
 Outputs are under `dist/`. CI builds both platforms. Pushing a version tag that
-matches `VERSION`, such as `v0.1.1`, publishes the APK, portable Windows ZIP,
+matches `VERSION`, such as `v0.1.2`, publishes the APK, portable Windows ZIP,
 and SHA256SUMS.txt after both builds pass.
 
 See [wire protocol](docs/PROTOCOL.md). Licensed under MIT. Independent software;

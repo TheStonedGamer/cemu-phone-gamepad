@@ -6,6 +6,7 @@ import android.content.res.Configuration;
 import android.graphics.*;
 import android.hardware.*;
 import android.os.Bundle;
+import android.os.Build;
 import android.os.SystemClock;
 import android.text.InputType;
 import android.view.*;
@@ -19,7 +20,9 @@ public final class MainActivity extends Activity implements SensorEventListener 
   private PhoneConnection connection;
   private PadView pad;
   private SensorManager sensors;
-  private String host, code;
+  private String host, deviceId;
+  private volatile String code = "";
+  private boolean setupOpen;
   private boolean active, muted;
   public void onCreate(Bundle saved) {
     super.onCreate(saved);
@@ -30,10 +33,20 @@ public final class MainActivity extends Activity implements SensorEventListener 
     connection = new PhoneConnection(state, new PhoneConnection.Listener() {
       public void frame(Bitmap bitmap) { pad.frame(bitmap); }
       public void status(String value) { pad.message = value; pad.postInvalidate(); }
+      public void paired(String address, String token) {
+        boolean saved = getPreferences(0).edit().putString("token." + address, token).remove("code").commit();
+        if (saved) code = "";
+        else runOnUiThread(() -> Toast.makeText(MainActivity.this, "Pairing could not be saved. Check available phone storage.", Toast.LENGTH_LONG).show());
+      }
     });
     host = getPreferences(0).getString("host", "");
-    code = getPreferences(0).getString("code", "");
-    pad.post(this::setup);
+    deviceId = getPreferences(0).getString("deviceId", "");
+    if (!deviceId.matches("[a-f0-9]{32}")) {
+      deviceId = UUID.randomUUID().toString().replace("-", "");
+      getPreferences(0).edit().putString("deviceId", deviceId).commit();
+    }
+    muted = getPreferences(0).getBoolean("muted", false); connection.mute(muted);
+    pad.post(() -> { if (!canConnect()) setup(); });
   }
   private void immersive() { getWindow().getDecorView().setSystemUiVisibility(5894); }
   protected void onResume() {
@@ -41,7 +54,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
     Sensor accel = sensors.getDefaultSensor(Sensor.TYPE_ACCELEROMETER), gyro = sensors.getDefaultSensor(Sensor.TYPE_GYROSCOPE);
     if (accel != null) sensors.registerListener(this, accel, SensorManager.SENSOR_DELAY_GAME);
     if (gyro != null) sensors.registerListener(this, gyro, SensorManager.SENSOR_DELAY_GAME);
-    if (!host.isEmpty() && code.length() == 8) connection.start(host, code);
+    if (!setupOpen) reconnect();
   }
   protected void onPause() {
     active = false; pad.clear(); connection.stop(); sensors.unregisterListener(this);
@@ -51,24 +64,52 @@ public final class MainActivity extends Activity implements SensorEventListener 
   public void onConfigurationChanged(Configuration config) { super.onConfigurationChanged(config); pad.clear(); synchronized(state) { state.accelTime = state.gyroTime = 0; } immersive(); }
   public void onWindowFocusChanged(boolean focused) { super.onWindowFocusChanged(focused); if (focused) immersive(); else if (pad != null) pad.clear(); }
   public void onBackPressed() { setup(); }
+  private String savedToken(String address) { return getPreferences(0).getString("token." + address, ""); }
+  private boolean canConnect() { return host != null && !host.isEmpty() && (code.length() == 8 || !savedToken(host).isEmpty()); }
+  private void reconnect() {
+    if (active && canConnect()) connection.start(host, code, code.isEmpty() ? savedToken(host) : "", deviceId, Build.MANUFACTURER + " " + Build.MODEL);
+  }
   private void setup() {
-    pad.clear(); connection.stop();
+    if (setupOpen) return;
+    setupOpen = true; pad.clear(); connection.stop();
     LinearLayout form = new LinearLayout(this); form.setOrientation(1); form.setPadding(32, 10, 32, 10);
-    TextView info = new TextView(this); info.setText("Start the Windows host, select Cemu's GamePad View, then enter its address and 8-digit pairing code. Both devices must share a trusted network."); form.addView(info);
-    EditText address = new EditText(this); address.setHint("PC IPv4 address"); address.setSingleLine(); address.setText(host); address.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI); form.addView(address);
-    EditText pairing = new EditText(this); pairing.setHint("8-digit pairing code"); pairing.setText(code); pairing.setSingleLine(); pairing.setInputType(InputType.TYPE_CLASS_NUMBER); form.addView(pairing);
+    TextView info = new TextView(this); info.setText("Pair once with the Windows host's code. Saved PCs reconnect after restarts without another code. Both devices must share a trusted network."); form.addView(info);
+    ArrayList<String> savedHosts = new ArrayList<>();
+    for (String key : getPreferences(0).getAll().keySet()) if (key.startsWith("token.")) savedHosts.add(key.substring(6));
+    AutoCompleteTextView address = new AutoCompleteTextView(this);
+    address.setAdapter(new ArrayAdapter<String>(this, android.R.layout.simple_dropdown_item_1line, savedHosts));
+    address.setThreshold(1); address.setHint("PC IPv4 address (saved PCs are suggested)");
+    address.setSingleLine(); address.setText(host); address.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI); form.addView(address);
+    EditText pairing = new EditText(this); pairing.setHint("Code — leave blank for a saved PC");
+    pairing.setSingleLine(); pairing.setInputType(InputType.TYPE_CLASS_NUMBER); form.addView(pairing);
+    address.setOnItemClickListener((parent, view, position, id) -> pairing.setText(""));
     CheckBox mute = new CheckBox(this); mute.setText("Mute phone audio"); mute.setChecked(muted); form.addView(mute);
-    AlertDialog dialog = new AlertDialog.Builder(this).setTitle("Cemu Phone GamePad").setView(form)
-        .setPositiveButton("Connect", null).setNegativeButton("Cancel", (d,w) -> { if (active && !host.isEmpty() && code.length()==8) connection.start(host, code); }).create();
-    dialog.setOnCancelListener(d -> { if (active && !host.isEmpty() && code.length()==8) connection.start(host, code); });
-    dialog.setOnShowListener(d -> dialog.getButton(-1).setOnClickListener(v -> {
-      String value = address.getText().toString().trim(), secret = pairing.getText().toString().trim();
-      if (!value.matches("[0-9]{1,3}(\\.[0-9]{1,3}){3}") || !secret.matches("[0-9]{8}")) { pairing.setError("Enter a PC IPv4 address and 8-digit code"); return; }
-      for (String part : value.split("\\.")) if (Integer.parseInt(part)>255) { address.setError("Invalid IPv4 address"); return; }
-      host = value; code = secret; muted = mute.isChecked(); connection.mute(muted);
-      getPreferences(0).edit().putString("host", host).putString("code", code).apply();
-      if (active) connection.start(host, code); dialog.dismiss(); immersive();
-    })); dialog.show();
+    ScrollView scroll = new ScrollView(this); scroll.addView(form);
+    AlertDialog dialog = new AlertDialog.Builder(this).setTitle("Cemu Phone GamePad").setView(scroll)
+        .setPositiveButton("Connect", null).setNegativeButton("Cancel", (d,w) -> reconnect())
+        .setNeutralButton("Forget this PC", null).create();
+    dialog.setOnCancelListener(d -> reconnect());
+    dialog.setOnDismissListener(d -> { setupOpen = false; immersive(); });
+    dialog.setOnShowListener(d -> {
+      dialog.getButton(-3).setOnClickListener(v -> {
+        String value = address.getText().toString().trim();
+        getPreferences(0).edit().remove("token." + value).remove("code").apply();
+        code = ""; pairing.setText(""); pairing.setHint("Enter this PC's current code to pair again");
+        pad.message = "Pairing forgotten on phone; Windows Saved devices can revoke its entry";
+      });
+      dialog.getButton(-1).setOnClickListener(v -> {
+        String value = address.getText().toString().trim(), secret = pairing.getText().toString().trim();
+        if (!value.matches("[0-9]{1,3}(\\.[0-9]{1,3}){3}")) { address.setError("Enter a PC IPv4 address"); return; }
+        String[] parts = value.split("\\.");
+        for (String part : parts) if (Integer.parseInt(part)>255) { address.setError("Invalid IPv4 address"); return; }
+        value = Integer.parseInt(parts[0])+"."+Integer.parseInt(parts[1])+"."+Integer.parseInt(parts[2])+"."+Integer.parseInt(parts[3]);
+        if (!(secret.isEmpty() && !savedToken(value).isEmpty()) && !secret.matches("[0-9]{8}")) { pairing.setError("Enter an 8-digit code, or leave blank for a saved PC"); return; }
+        host = value; code = secret; muted = mute.isChecked(); connection.mute(muted);
+        getPreferences(0).edit().putString("host", host).putBoolean("muted", muted).remove("code").apply();
+        reconnect(); dialog.dismiss();
+      });
+    });
+    dialog.show();
   }
   public void onAccuracyChanged(Sensor sensor, int accuracy) { }
   public void onSensorChanged(SensorEvent event) {

@@ -1,20 +1,26 @@
-GamePad View can now stay behind the main Cemu window or other apps.
+Remembered device pairings, plus GamePad capture behind other windows.
 
-- Replaced desktop screenshots with Windows Graphics Capture targeting the
-  selected Cemu window. Covering windows are not included in the phone image.
-- Client-area and 16:9 cropping keep borders and title bars off the touch screen.
-- Capture buffers follow window resizing.
-- Minimizing shows a restore message without disconnecting controls/audio;
-  keep the GamePad window open and not minimized for live video.
-- Status heartbeats keep static scenes and temporarily paused capture connected.
+- Pair once; saved phones reconnect without entering a new code after app or
+  Windows host restarts. Pairings survive normal app/host updates.
+- Android saves separate PC credentials and suggests saved addresses in SETUP.
+- Windows Saved devices lists trusted phones and can forget/revoke a selected
+  phone, including disconnecting its active session.
+- Host stores token hashes under the Windows user profile; the phone stores
+  its random credential privately. No hardware device serial is used.
+- Includes v0.1.1 Windows Graphics Capture: GamePad View can remain behind other
+  windows. Keep it open and not minimized for live video; minimization shows a
+  restore message while keeping controls/audio and the connection alive.
 
-Requires Windows 10 version 2004+ or Windows 11 x64 and a supported graphics
-driver. No Cemu modification, injected DLL, or virtual controller driver.
+Update BOTH the Android APK and the entire Windows ZIP to enable saved
+pairings. Enter the host's current code once, then leave the code blank for
+that saved PC. Older phones still work with a current code but cannot save
+pairings on the host.
 
-Android app and phone protocol remain compatible with the previous host.
-Download and extract the entire Windows ZIP to update. The APK is included
-with synchronized version metadata.
+Windows 10 version 2004+ or Windows 11 x64 with a supported graphics driver.
+No virtual gamepad driver or paid license. Use a trusted LAN; traffic and the
+initial pairing exchange are not encrypted.
 
-Compilation is checked; real Windows/Cemu capture, resize and restore behavior
-still need live validation. Other limitations remain: no camera, microphone,
-NFC or rumble forwarding, and desktop loopback audio includes other apps.
+Builds and Android launch are checked. Complete live Windows/Cemu capture and
+pair/reconnect/revoke behavior still need device validation. Other limitations
+remain: no camera, microphone, NFC or rumble forwarding, and desktop loopback
+audio includes other apps.

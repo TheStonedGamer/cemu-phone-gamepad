@@ -17,6 +17,7 @@ internal sealed class HostForm : Form
     private readonly Label pairing = new() { AutoSize = true, Font = new Font("Segoe UI", 18, FontStyle.Bold) };
     private readonly Label status = new() { Text = "Stopped", AutoSize = true, MaximumSize = new Size(690, 0) };
     private PhoneServer? phone;
+    private PairingStore? pairings;
     private DsuServer? dsu;
     public HostForm()
     {
@@ -27,9 +28,11 @@ internal sealed class HostForm : Form
         Controls.Add(panel);
         void TextLine(string text) => panel.Controls.Add(new Label { Text = text, AutoSize = true, MaximumSize = new Size(690, 0), Margin = new Padding(0, 0, 0, 16) });
         TextLine("Your Android phone as Cemu's second screen and controller");
-        TextLine("1. Run Cemu and enable Options → Separate GamePad View.\n2. Select that window below. It can stay behind other windows.\n3. Start the host, then enter the PC address and pairing code in the Android app.");
+        TextLine("1. Run Cemu and enable Options → Separate GamePad View.\n2. Select that window below. It can stay behind other windows.\n3. Start the host. Pair once in Android; saved phones reconnect without a code.");
         panel.Controls.Add(windows); panel.Controls.Add(refresh); panel.Controls.Add(audio);
         panel.Controls.Add(toggle); panel.Controls.Add(pairing); panel.Controls.Add(status);
+        var saved = new Button { Text = "Saved devices…", AutoSize = true };
+        saved.Click += (_, _) => ManagePairings(); panel.Controls.Add(saved);
         var addresses = NetworkInterface.GetAllNetworkInterfaces().Where(n => n.OperationalStatus == OperationalStatus.Up)
             .SelectMany(n => n.GetIPProperties().UnicastAddresses).Where(a => a.Address.AddressFamily == AddressFamily.InterNetwork
                 && !System.Net.IPAddress.IsLoopback(a.Address)).Select(a => a.Address.ToString()).Distinct();
@@ -49,15 +52,39 @@ internal sealed class HostForm : Form
         {
             var source = new PadSource();
             dsu = new DsuServer(source);
-            var current = new PhoneServer(source, selected, audio.Checked);
+            pairings ??= new PairingStore();
+            var current = new PhoneServer(source, selected, audio.Checked, pairings);
             phone = current;
             current.Status += value => UpdateUi(() => { if (phone == current) status.Text = value; });
             dsu.Failed += value => UpdateUi(() => { if (phone == current) { StopHost(); status.Text = "DSU stopped: " + value; } });
-            pairing.Text = "Pairing code: " + current.Code;
+            pairing.Text = "New device code: " + current.Code;
             status.Text = "Waiting for Android phone";
             toggle.Text = "Stop host"; windows.Enabled = refresh.Enabled = audio.Enabled = false;
         }
         catch (Exception e) { StopHost(); status.Text = "Cannot start: " + e.Message; }
+    }
+    private void ManagePairings()
+    {
+        try
+        {
+            pairings ??= new PairingStore();
+            using var dialog = new Form { Text = "Saved phones", ClientSize = new Size(590, 320),
+                StartPosition = FormStartPosition.CenterParent, Font = Font, MinimizeBox = false, MaximizeBox = false };
+            var list = new ListBox { Dock = DockStyle.Fill };
+            var forget = new Button { Text = "Forget selected phone", Dock = DockStyle.Bottom, Height = 44 };
+            var info = new Label { Text = "Pairings survive host restarts and updates. Forgetting a connected phone releases its input and disconnects it.",
+                Dock = DockStyle.Top, Height = 60, Padding = new Padding(8) };
+            void RefreshList() { list.Items.Clear(); list.Items.AddRange(pairings.Devices); if (list.Items.Count > 0) list.SelectedIndex = 0; forget.Enabled = list.Items.Count > 0; }
+            forget.Click += (_, _) =>
+            {
+                if (list.SelectedItem is not PairedDevice device) return;
+                try { pairings.Forget(device.Id); RefreshList(); }
+                catch (Exception e) { MessageBox.Show(dialog, e.Message, "Could not forget phone"); }
+            };
+            dialog.Controls.Add(list); dialog.Controls.Add(forget); dialog.Controls.Add(info);
+            RefreshList(); dialog.ShowDialog(this);
+        }
+        catch (Exception e) { status.Text = "Cannot open saved devices: " + e.Message; }
     }
     private void StopHost()
     {

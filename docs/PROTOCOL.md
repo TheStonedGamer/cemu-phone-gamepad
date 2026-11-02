@@ -1,9 +1,32 @@
 # Phone link and emulator output
 
-Phone connects to host TCP 26762. Both peers set TCP_NODELAY. Client first
-sends ASCII `PGP1` followed by the host's eight numeric pairing digits, exactly
-12 bytes. The host grants one phone session at a time. Pairing has a five-second
-deadline; rejected sessions are delayed one second. Traffic is not encrypted.
+Phone connects to host TCP 26762. Both peers set TCP_NODELAY. The host grants
+one phone session at a time. Authentication has a five-second deadline;
+rejected sessions are delayed one second. Traffic is not encrypted.
+
+## Pairing and reconnect
+
+New phone builds send ASCII `PGP2`, a four-byte big-endian JSON length (2–1024),
+and UTF-8 JSON. Properties are `deviceId` (32 hex digits, random per app install),
+`name` (phone model), and either `code` (host's current eight digits) or `token`
+(64 hex digits, 32 random bytes issued on the first successful pairing).
+
+The host responds using normal host-to-phone framing: type 4 with UTF-8 JSON
+`{"saved":true,"token":"..."}` for a new pairing, or `{"saved":true}` when an
+existing token was accepted. The phone persists the credential before future
+reconnects use it. Type 5 is a UTF-8 rejection reason; the phone stops retrying
+that credential and asks the user to open SETUP. An explicitly entered code
+replaces the saved credential for that PC after acceptance.
+
+The host stores device ID, display name, SHA-256 token hash and pairing date
+under the Windows user's local app data directory. Writes use atomic file
+replacement. Forgetting a device removes authorization for its active session
+and future connections. Tokens are not returned from the saved-device UI.
+
+Legacy phone builds may send ASCII `PGP1` followed by the host's eight numeric
+pairing digits, exactly 12 bytes. These sessions are authenticated by the code
+but do not create remembered devices. Both handshake versions then use the
+same control and media frames below.
 
 ## Phone to host
 
@@ -34,7 +57,7 @@ ends the link. The DSU clock is host monotonic time, independent of phone clock.
 
 Each frame is one type byte, four-byte big-endian payload length, and payload.
 Length is bounded to 2 MB. Types: 1 JPEG video; 2 little-endian signed 16-bit
-48 kHz stereo PCM audio; 3 UTF-8 status. Video decode also bounds image size.
+48 kHz stereo PCM audio; 3 UTF-8 status; 4 UTF-8 pairing JSON; 5 UTF-8 auth rejection. Video decode also bounds image size.
 Audio/video queue lengths are bounded; older data is discarded under load.
 The host sends a type-3 status heartbeat every second even when Windows capture
 has no new image, such as a static scene or minimized GamePad View. This keeps

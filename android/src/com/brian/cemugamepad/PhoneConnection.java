@@ -60,7 +60,8 @@ final class PhoneConnection {
           + " input/s  ·  " + String.format(java.util.Locale.US,"%.1f",(s.bytes-statsBytes)*8.0/elapsed/1000) + " Mb/s";
       statsAt = now; statsFrames = s.frames; statsPackets = s.packets; statsBytes = s.bytes;
     }
-    String audio = muted ? "muted" : s.lastAudio == 0 || now-s.lastAudio>2000 ? "waiting for sound" : s.queuedMs + " ms queued";
+    int queued=s.queuedMs; for(Sound pending:s.sound) queued+=pending.bytes.length/192;
+    String audio = muted ? "muted" : s.lastAudio == 0 || now-s.lastAudio>2000 ? "waiting for sound" : queued + " ms queued";
     return stats + "\nAudio " + s.transport + " · " + audio + " · " + s.audioDrops + " dropped";
   }
   synchronized void start(String host, String code, String savedToken, String deviceId, String deviceName) {

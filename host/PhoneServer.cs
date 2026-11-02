@@ -66,6 +66,7 @@ internal sealed class PhoneServer : IDisposable
                                 audioSocket = new UdpClient(AddressFamily.InterNetwork);
                                 audioSocket.Client.SendBufferSize = 8192;
                                 audioSocket.Connect(remote.Address, trusted.AudioPort);
+                                audioSocket.Client.Blocking = false;
                                 byte[] audioId = RandomNumberGenerator.GetBytes(16);
                                 await SendFrame(stream, 6, JsonSerializer.SerializeToUtf8Bytes(new { transport = "udp", session = Convert.ToHexString(audioId), sampleRate = 48000, channels = 2 }), session.Token);
                                 uint sequence = 0;

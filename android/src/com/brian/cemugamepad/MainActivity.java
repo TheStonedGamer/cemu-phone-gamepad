@@ -31,6 +31,7 @@ public final class MainActivity extends Activity implements SensorEventListener 
   private final Runnable ticker = new Runnable() { public void run() { if(active) { pad.invalidate(); ui.postDelayed(this,500); } } };
   public void onCreate(Bundle saved) {
     super.onCreate(saved);
+    setVolumeControlStream(android.media.AudioManager.STREAM_MUSIC);
     getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
     immersive();
     sensors = (SensorManager)getSystemService(SENSOR_SERVICE);

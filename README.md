@@ -1,0 +1,109 @@
+# Cemu Phone GamePad
+
+Use an **Android phone as Cemu's Wii U GamePad**: a separate GamePad screen,
+multitouch buttons and sticks, direct touchscreen input, phone motion, and
+PC playback audio. Cemu runs the game on a Windows PC; the TV view stays there.
+
+This is a separate app from Wii U Controller. It installs alongside it as
+`com.brian.cemugamepad`. It does not connect to a physical Wii U console.
+
+[Download Android APK and Windows host](https://github.com/TheStonedGamer/cemu-phone-gamepad/releases/latest)
+
+## Requirements
+
+- Windows 10/11 x64 PC running Cemu with its **Separate GamePad View** enabled.
+- Android 6.0+ phone; gyroscope required for full motion. Buttons and touch work
+  without a gyro.
+- A shared trusted local network. Prefer 5 GHz Wi-Fi or Ethernet for the PC.
+- No virtual controller driver, paid license, or separate .NET runtime required.
+
+## Setup
+
+1. Install `Cemu-Phone-GamePad.apk` on the phone.
+2. Extract the full `Cemu-Phone-GamePad-Windows-x64.zip` on the PC and run
+   `Cemu-Phone-GamePad.exe`.
+3. In Cemu, start a game and enable **Options → Separate GamePad View**.
+4. In the host, refresh the window list and select **GamePad View**. Keep it
+   visible, unminimized, and unobscured. Click **Start GamePad host**.
+5. Allow the host on your private network in Windows Firewall. Open **SETUP**
+   in the phone app and enter the displayed PC IPv4 address and 8-digit code.
+6. In Cemu's **Options → Input settings**, choose **Wii U GamePad** as the
+   emulated controller. Add **DSUController**, server **127.0.0.1**, port
+   **26760**, **Controller 1**. Keep the phone connected while configuring.
+7. In that controller's **Settings**, enable motion. Map the buttons and sticks
+   using the phone controls, then save a named Cemu profile. Touch is provided
+   directly by the DSU controller; there is no mouse mapping step.
+
+The host sends DSU data on PC loopback only. The phone connection uses
+**TCP 26762**. If DSU 26760 is busy, close another receiver or motion server.
+The pairing code changes each time the host starts. Re-enter it on the phone.
+
+| Phone control | DSU label in Cemu |
+| --- | --- |
+| A / B / X / Y | Circle / Cross / Triangle / Square |
+| L / R / ZL / ZR | L / R / ZL / ZR |
+| Plus / Minus | Options / Share |
+| L3 / R3 | Stick L / Stick R |
+| HOME | Touch (a button separate from touchscreen coordinates) |
+| D-pad | Up / Down / Left / Right |
+| Left / right sticks | Axis / Rotation directions |
+
+## Current behavior and limits
+
+- The central phone image is touch-sensitive while other fingers hold buttons
+  or move sticks. Wii U GamePad touch itself is one contact, as on the original.
+- Buttons/sticks/sensors send at about 60 Hz. Input older than 250 ms is replaced
+  with neutral controls and released touch. Backgrounding, disconnecting, or
+  opening SETUP releases controls.
+- Video uses JPEG frames at 854×480, targeting 30 fps. Decode and transport queues
+  are bounded and discard older frames when the network cannot keep up.
+  This first version prioritizes compatibility over bandwidth efficiency.
+- Capture reads the selected window's **visible desktop area**, cropped to its
+  central 16:9 picture. Windows covering it will be visible on the phone.
+  Minimized or closed windows stop the session. This is not hidden-window capture.
+- Audio is 48 kHz stereo PCM from the PC's default playback endpoint. It includes
+  other apps using that endpoint. The host checkbox disables sharing; phone
+  SETUP also has mute. It does not isolate Cemu's GamePad-only audio.
+- Acceleration and gyro rates are rotated into the phone's landscape display
+  basis. Samples older than 200 ms are invalidated. Gyro is optional; orientation
+  feel, axis signs and drift require live Cemu checks on real phones.
+- One phone/GamePad per host. There is no game streaming to a physical Wii U.
+- Camera, microphone, NFC, stylus pressure, rumble, and GamePad-specific power
+  controls are not forwarded. This app covers the screen, touch, standard
+  controls, motion and playback path rather than every GamePad accessory.
+- The LAN connection is paired but unencrypted. Use a trusted local network.
+
+## Validation status
+
+The APK and Windows project compile. Initial installation/launch is checked on
+an Android Galaxy A14. A live Windows/Cemu game session has **not** been checked;
+screen capture, touch alignment, sensor orientation, audio and actual latency
+remain experimental until tested together. Building a package is not proof of
+in-game compatibility.
+
+## Build
+
+Android uses a small Java/Canvas client without Android Studio or Gradle:
+
+```sh
+docker build -f docker/android.Dockerfile -t gamepad-android .
+docker run --rm -v "$PWD:/project" gamepad-android bash build.sh
+```
+
+The build generates a local signing key under ignored `android/signing/` if
+needed. Keep it for compatible updates. The development key password is
+`android`. CI restores its key from `ANDROID_KEYSTORE_BASE64`; pull requests
+use a separate temporary development key.
+
+Windows requires the .NET 10 SDK:
+
+```powershell
+./host/build.ps1
+```
+
+Outputs are under `dist/`. CI builds both platforms. Pushing a version tag that
+matches `VERSION`, such as `v0.1.0`, publishes the APK, portable Windows ZIP,
+and SHA256SUMS.txt after both builds pass.
+
+See [wire protocol](docs/PROTOCOL.md). Licensed under MIT. Independent software;
+not affiliated with Nintendo, Cemu, or Android.

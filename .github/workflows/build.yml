@@ -1,0 +1,74 @@
+name: Build Android and Windows
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  android:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - name: Restore app signing key
+        if: github.event_name != 'pull_request'
+        env:
+          KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          python3 - <<'PY'
+          import base64, os
+          from pathlib import Path
+          value = os.environ.get('KEYSTORE', '')
+          if value:
+              path = Path('android/signing/controller.jks')
+              path.parent.mkdir(parents=True, exist_ok=True)
+              path.write_bytes(base64.b64decode(value, validate=True))
+              path.chmod(0o600)
+          PY
+      - name: Build APK
+        run: |
+          docker build -f docker/android.Dockerfile -t gamepad-android .
+          docker run --rm -v "$PWD:/project" gamepad-android bash build.sh
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: android
+          path: dist/Cemu-Phone-GamePad.apk
+          if-no-files-found: error
+  windows:
+    runs-on: windows-2025
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1
+        with:
+          dotnet-version: '10.0.x'
+      - name: Build portable host
+        shell: pwsh
+        run: ./host/build.ps1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: windows
+          path: dist/Cemu-Phone-GamePad-Windows-x64.zip
+          if-no-files-found: error
+  release:
+    needs: [android, windows]
+    if: startsWith(github.ref, 'refs/tags/v') && github.event_name == 'push'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          path: release-assets
+          merge-multiple: true
+      - name: Check version and hash assets
+        run: |
+          test "$GITHUB_REF_NAME" = "v$(cat VERSION)"
+          cd release-assets
+          sha256sum Cemu-Phone-GamePad.apk Cemu-Phone-GamePad-Windows-x64.zip > SHA256SUMS.txt
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" release-assets/* --verify-tag --title "Cemu Phone GamePad $GITHUB_REF_NAME" --notes-file docs/RELEASE_NOTES.md

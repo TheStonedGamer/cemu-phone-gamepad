@@ -29,12 +29,27 @@ This is a separate app from Wii U Controller. It installs alongside it as
 5. Allow the host on your private network in Windows Firewall. Open **SETUP**
    in the phone app and enter the displayed PC IPv4 address and 8-digit code
    once. Pairing is saved automatically on both devices.
-6. In Cemu's **Options → Input settings**, choose **Wii U GamePad** as the
-   emulated controller. Add **DSUController**, server **127.0.0.1**, port
-   **26760**, **Controller 1**. Keep the phone connected while configuring.
-7. In that controller's **Settings**, enable motion. Map the buttons and sticks
-   using the phone controls, then save a named Cemu profile. Touch is provided
-   directly by the DSU controller; there is no mouse mapping step.
+6. In the host, click **Install Cemu button mappings…**. Select Cemu's active
+   configuration folder (the folder containing `settings.xml`), or its
+   `controllerProfiles` folder directly.
+7. Reopen Cemu's **Options → Input settings**, choose **Controller 1**, select
+   the **CemuPhoneGamePad** profile and click **Load**. This selects Wii U
+   GamePad, DSUController at **127.0.0.1:26760**, and maps buttons, sticks and
+   motion. Touch is supplied directly by DSU.
+
+### If the image works but buttons do not
+
+- Update and run the entire Windows ZIP, then load the supplied profile above.
+  Cemu's DSU backend needs button mappings before it can control a game.
+- Watch **Phone input** in the Windows host while pressing A: its packet count
+  should advance and it should show A. Waiting means phone input is missing.
+- **Cemu input** should show “Controller data requested by the emulator”. If it
+  stays “Controller 1 ready”, load the profile or add **DSUController** manually
+  at **127.0.0.1**, port **26760**, selecting **Controller 1**.
+- Controller 1 is available as soon as the Windows app opens, including before
+  pairing or starting video. Disconnected phones produce neutral controls.
+- If port 26760 is busy, close the other DSU/motion server and click **Retry
+  Cemu input connection**. Restart Cemu if it cached an older connection.
 
 The host sends DSU data on PC loopback only. The phone connection uses
 **TCP 26762**. If DSU 26760 is busy, close another receiver or motion server.
@@ -115,8 +130,9 @@ app updates. On the phone, leave the code blank when selecting a saved PC.
 ## Validation status
 
 The APK and Windows project compile. Initial installation/launch is checked on
-an Android Galaxy A14. Remembered-pairing and capture changes compile, but a live
-Windows/Cemu game session has **not** been checked. Covered-window capture,
+an Android Galaxy A14. A live game image has been observed on that phone. DSU
+discovery, packet CRCs, button forwarding and neutral release were checked with
+a protocol probe. Actual in-game input on Windows still needs confirmation. Covered-window capture,
 resize/restore behavior, touch alignment, sensor orientation, audio and actual
 latency remain experimental until tested together. Building a package is not
 proof of in-game compatibility.
@@ -142,7 +158,7 @@ Windows requires the .NET 10 SDK:
 ```
 
 Outputs are under `dist/`. CI builds both platforms. Pushing a version tag that
-matches `VERSION`, such as `v0.1.2`, publishes the APK, portable Windows ZIP,
+matches `VERSION`, such as `v0.1.3`, publishes the APK, portable Windows ZIP,
 and SHA256SUMS.txt after both builds pass.
 
 See [wire protocol](docs/PROTOCOL.md). Licensed under MIT. Independent software;

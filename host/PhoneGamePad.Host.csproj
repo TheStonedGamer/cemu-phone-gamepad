@@ -14,5 +14,6 @@
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="NAudio" Version="2.2.1" />
+    <Content Include="../profiles/CemuPhoneGamePad.xml" Link="profiles/CemuPhoneGamePad.xml" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

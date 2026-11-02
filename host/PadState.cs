@@ -35,10 +35,26 @@ internal sealed class PadSource
     private readonly object gate = new();
     private PadState current = new();
     private long received;
-    public void Update(PadState state) { lock (gate) { current = state; received = Environment.TickCount64; } }
+    private long packets;
+    public void Update(PadState state) { lock (gate) { current = state; received = Environment.TickCount64; packets++; } }
     public (PadState State, bool Connected) Snapshot()
     {
         lock (gate) return received != 0 && Environment.TickCount64 - received < 250 ? (current, true) : (new(), false);
+    }
+    public string Diagnostic
+    {
+        get
+        {
+            lock (gate)
+            {
+                if (received == 0 || Environment.TickCount64 - received >= 250)
+                    return "Phone input: waiting — Controller 1 is neutral";
+                string[] names = ["Minus", "L3", "R3", "Plus", "Up", "Right", "Down", "Left", "ZL", "ZR", "L", "R", "X", "A", "B", "Y", "HOME"];
+                string pressed = string.Join("+", Enumerable.Range(0, names.Length).Where(i => (current.Buttons & (1u << i)) != 0).Select(i => names[i]));
+                if (pressed.Length == 0) pressed = "none";
+                return $"Phone input: {packets} packets received · buttons {pressed} · touch {(current.Touch ? "down" : "up")}";
+            }
+        }
     }
     public void Release() { lock (gate) { current = new(); received = 0; } }
     public static ulong Timestamp => (ulong)(Stopwatch.GetTimestamp() * (1_000_000.0 / Stopwatch.Frequency));

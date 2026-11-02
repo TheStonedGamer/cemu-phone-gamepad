@@ -66,7 +66,8 @@ the paired link alive without repeatedly encoding the same frame.
 ## Cemu
 
 Host exposes DSU/Cemuhook protocol 1001 on 127.0.0.1:26760 only. It implements
-version, four-slot information (only slot zero used), subscription by slot/MAC
+version, four-slot information (slot zero remains connected while the host app
+is open, even without a phone; other slots are disconnected), subscription by slot/MAC
 or all pads, CRC32, packet counters, digital/analog buttons, dual sticks, touch,
 and motion. Subscriptions expire after five seconds without renewal.
 

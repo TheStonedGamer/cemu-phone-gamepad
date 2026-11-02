@@ -171,7 +171,7 @@ final class PhoneConnection {
   }
   private void receiveAudio(Session s, Socket peer, DatagramSocket udp) {
     android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_AUDIO);
-    byte[] buffer = new byte[1200]; boolean haveSequence = false; int last = 0; long clockOffset = Long.MAX_VALUE;
+    byte[] buffer = new byte[1200]; boolean haveSequence = false; int last = 0; double clockOffset = Double.POSITIVE_INFINITY; long previousArrival=SystemClock.elapsedRealtime();
     while (alive(s) && !peer.isClosed() && !udp.isClosed()) {
       try {
         DatagramPacket packet = new DatagramPacket(buffer,buffer.length); udp.receive(packet);
@@ -184,7 +184,11 @@ final class PhoneConnection {
         if(haveSequence && sequence-last>1) s.audioDrops += sequence-last-1;
         haveSequence=true; last=sequence;
         long sent=0; for(int i=24;i<32;i++) sent=(sent<<8)|(buffer[i]&255L);
-        long delta=SystemClock.elapsedRealtime()-sent; clockOffset=Math.min(clockOffset,delta);
+        long arrival=SystemClock.elapsedRealtime(), delta=arrival-sent;
+        // Follow oscillator drift slowly (500 ppm), without absorbing a sudden
+        // network backlog into the baseline and playing that backlog late.
+        clockOffset=Math.min(clockOffset+Math.max(0,arrival-previousArrival)*0.0005,delta);
+        previousArrival=arrival;
         if(delta-clockOffset>targetMs) {s.audioDrops++;continue;}
         offerAudio(s,Arrays.copyOfRange(buffer,32,length));
       } catch (SocketTimeoutException ignored) { }

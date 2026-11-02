@@ -99,7 +99,8 @@ little-endian stereo PCM at 48 kHz:
 Only packets from the TCP host IP matching the session ID are accepted. Duplicate
 and reordered sequences are dropped; packet loss is not retransmitted. The
 receiver estimates clock offset from the minimum observed receive-minus-send
-delta and discards packets delayed beyond its selected playback budget. It
+delta, allowing its baseline to rise slowly (up to 500 ppm) for clock drift,
+and discards packets delayed beyond its selected playback budget. It
 also bounds the received queue, expires old queued packets and flushes excess
 AudioTrack backlog. Queue statistics exclude hardware, capture and network
 latency; they are not an end-to-end latency measurement. Session IDs are not

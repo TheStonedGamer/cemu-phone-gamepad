@@ -7,4 +7,5 @@ Copy-Item (Join-Path $PSScriptRoot '../README.md') $output
 Copy-Item (Join-Path $PSScriptRoot '../LICENSE') $output
 Copy-Item (Join-Path $PSScriptRoot '../THIRD_PARTY_NOTICES.md') $output
 Copy-Item (Join-Path $PSScriptRoot '../docs/NAudio-LICENSE.txt') $output
+Copy-Item (Join-Path $PSScriptRoot '../docs/CsWinRT-LICENSE.txt') $output
 Compress-Archive -Path "$output/*" -DestinationPath (Join-Path $PSScriptRoot '../dist/Cemu-Phone-GamePad-Windows-x64.zip') -Force
